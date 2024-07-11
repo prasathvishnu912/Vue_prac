@@ -12,6 +12,7 @@
     </div>
 </template>
 
+
 <script>
 import * as d3 from 'd3';
 import data from './assets/json/data.json';
@@ -22,7 +23,7 @@ export default {
         return {
             width: window.innerWidth - 200,
             height: window.innerHeight - 200,
-            margin: { top: 20, right: 100, bottom: 20, left: 150 },
+            margin: { top: 50, right: 100, bottom: 20, left: 150 },
             selectedSourceAttribute: '',
             uniqueSourceAttributes: []
         };
@@ -58,13 +59,11 @@ export default {
             const nodesMap = {};
 		
             dataFlows.forEach(flow => {
-            console.log(flow);
                 let currentNode = root;
-                flow.forEach(comp => {
-                        const newNode = { name: comp, children: [] };
-                        nodesMap[comp] = newNode;
-                        currentNode.children.push(newNode);
-                    
+                flow.forEach(comp => { 
+                    const newNode = { name: comp, children: [] };
+                    nodesMap[comp] = newNode;
+                    currentNode.children.push(newNode);
                     currentNode = nodesMap[comp];
                 });
             });
@@ -72,45 +71,47 @@ export default {
             return root;
         },
         renderTree(data) {
-    const svg = d3.select(this.$refs.treeContainer);
-    svg.selectAll("*").remove();
+            const svg = d3.select(this.$refs.treeContainer);
+            svg.selectAll("*").remove();
 
-    const treeLayout = d3.tree().size([this.height - this.margin.top - this.margin.bottom, this.width - this.margin.right - this.margin.left]);
-    const root = d3.hierarchy(data);
-    treeLayout(root);
+            const treeLayout = d3.tree().size([this.height - this.margin.top - this.margin.bottom, this.width - this.margin.right - this.margin.left]);
+            const root = d3.hierarchy(data);
+            treeLayout(root);
 
-    const nodeSize = this.calculateNodeSize(root.descendants().length);
+            const nodeSize = this.calculateNodeSize(root.descendants().length);
 
-    const link = svg.selectAll(".link")
-        .data(root.links())
-        .enter().append("path")
-        .attr("class", "link")
-        .attr("d", d3.linkHorizontal()
-            .x(d => d.y)
-            .y(d => d.x)
-        )
-        .attr("fill", "none")
-        .attr("stroke", "#ccc")
-        .attr("stroke-width", 2)
-        .on("mouseover", this.highlightPath)
-        .on("mouseout", this.resetPathHighlight);
+            const link = svg.selectAll(".link")
+                .data(root.links())
+                .enter().append("path")
+                .attr("class", "link")
+                .attr("d", d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x)
+                )
+                .attr("fill", "none")
+                .attr("stroke", "#ccc")
+                .attr("stroke-width", 5)
+                .on("mouseover", this.highlightPath)
+                .on("mouseout", this.resetPathHighlight);
 
-    const node = svg.selectAll(".node")
-        .data(root.descendants())
-        .enter().append("g")
-        .attr("class", "node")
-        .attr("transform", d => `translate(${d.y},${d.x})`);
+            const node = svg.selectAll(".node")
+                .data(root.descendants())
+                .enter().append("g")
+                .attr("class", "node")
+                .attr("transform", d => `translate(${d.y},${d.x})`);
 
-    node.append("circle")
-        .attr("r", nodeSize)
-        .attr("fill", "#3182bd"); // Set a single color for all nodes
+            node.append("circle")
+                .attr("r", nodeSize)
+                .attr("fill", "#3182bd");
 
-    node.append("text")
-        .attr("dy", "-2em")
-        .attr("x", d => d.children ? -12 : 12)
-        .style("text-anchor", d => d.children ? "end" : "start")
-        .text(d => d.data.name);
-},
+            node.append("text")
+                .attr("dy", "-1em")
+                .attr("x", d => d.children ? -12 : 12)
+                .style("text-anchor", d => d.children ? "end" : "start")
+                .text(d => d.data.name);
+                
+           console.log(svg.selectAll(".link"));     
+        },
         calculateNodeSize(numNodes) {
             const baseSize = 10;
             const maxSize = 30;
@@ -119,22 +120,35 @@ export default {
             return Math.max(minSize, Math.min(maxSize, size));
         },
         highlightPath(event, d) {
-            d3.select(event.currentTarget)
-                .attr("stroke", "orange")
-                .attr("stroke-width", 4);
+            d3.selectAll(".highlight").classed("highlight", false);
+
+            let current = d.target;
+            while (current) {
+                d3.select(current).classed("highlight", true);
+                current = current.parent;
+            }
         },
         resetPathHighlight(event, d) {
-            d3.select(event.currentTarget)
-                .attr("stroke", "#ccc")
-                .attr("stroke-width", 2);
+            d3.selectAll(".highlight").classed("highlight", false);
         }
     }
 };
 </script>
 
 
+
 <style scoped>
 .d3-tree-container {
     margin-bottom: 20px;
+}
+
+.link.highlight {
+    stroke: orange;
+    stroke-width: 4;
+}
+
+.node.highlight circle {
+    stroke: orange;
+    stroke-width: 4;
 }
 </style>
