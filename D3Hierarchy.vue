@@ -1,30 +1,30 @@
 <template>
     <div class="d3-tree-container" style="margin: 10px;">
         <el-select v-model="selectedSourceAttribute" placeholder="Select Attribute"
-            style="width: 250px; margin: 10px; font-size: 20px; z-index: 0;" @change="updateChart">
+            style="width: 300px; margin: 10px; font-size: 20px; z-index: 0;" @change="updateChart">
             <el-option v-for="(attr, index) in uniqueSourceAttributes" :key="index" :value="attr"
                 style="font-size: 20px;"></el-option>
         </el-select>
 
-        <svg ref="treeSvg" :width="width" :height="height"></svg>
+        <svg :width="width" :height="height">
+            <g :transform="'translate(' + margin.left + ',' + margin.top + ')'" ref="treeContainer"></g>
+        </svg>
     </div>
 </template>
 
 <script>
-import * as d3 from "d3";
-import data from "./assets/json/data.json";
+import * as d3 from 'd3';
+import data from './assets/json/data.json';
 
 export default {
-    name: "D3TreeDiagram",
+    name: 'D3TreeDiagram',
     data() {
         return {
             width: window.innerWidth - 200,
             height: window.innerHeight - 200,
-            margin: { top: 20, right: 100, bottom: 20, left: 50 },
-            nodes: [],
-            links: [],
-            selectedSourceAttribute: "",
-            uniqueSourceAttributes: [],
+            margin: { top: 20, right: 100, bottom: 20, left: 150 },
+            selectedSourceAttribute: '',
+            uniqueSourceAttributes: []
         };
     },
     mounted() {
@@ -33,132 +33,105 @@ export default {
     methods: {
         extractUniqueAttributes() {
             const uniqueAttributes = new Set();
-            data.forEach((item) => {
-                item.sourceAttribute
-                    .split(",")
-                    .forEach((attr) => uniqueAttributes.add(attr.trim()));
+            data.forEach(item => {
+                item.sourceAttribute.split(',').forEach(attr => uniqueAttributes.add(attr.trim()));
             });
             this.uniqueSourceAttributes = [...uniqueAttributes];
         },
         getDataFlowComp() {
             const dataFlows = [];
-            let i=0;
-            data.forEach((obj) => {
-                
-                if (obj.sourceAttribute.split(",").includes(this.selectedSourceAttribute)) {
+            data.forEach(obj => {
+                if (obj.sourceAttribute.split(',').includes(this.selectedSourceAttribute)) {
                     const flowComps = [obj.sourceComponent, ...obj.destinationComponent];
                     dataFlows.push(flowComps);
-                    console.log(dataFlows);
-                    console.log(i++);
                 }
             });
             return dataFlows;
         },
-
         updateChart() {
-            if (this.selectedSourceAttribute) {
-                const dataFlows = this.getDataFlowComp();
-              
-                const componentCount = {};
-                dataFlows.forEach((flow) => {
-                    flow.forEach((component) => {
-                        if (componentCount[component]) {
-                            componentCount[component]++;
-                        } else {
-                            componentCount[component] = 1;
-                        }
-                    });
-                });
-
-                const sortedComponents = Object.keys(componentCount)
-                    .map((name) => ({ name, count: componentCount[name] }))
-                    .sort((a, b) => b.count - a.count);
-
-                const hierarchyData = this.createHierarchy(sortedComponents);
-
-                const treeLayout = d3.tree().size([this.height - 100, this.width - 200]);
-
-                const treeData = treeLayout(hierarchyData);
-
-                this.nodes = treeData.descendants().map((node) => ({
-                    id: node.data.name,
-                    name: node.data.name,
-                    x: node.y,
-                    y: node.x,
-                }));
-
-                this.links = treeData.links();
-             
-                this.updateSvg();
-            } else {
-                this.nodes = [];
-                this.links = [];
-                this.updateSvg();
-            }
+            const dataFlows = this.getDataFlowComp();
+            const hierarchyData = this.transformData(dataFlows);
+            this.renderTree(hierarchyData);
         },
+        transformData(dataFlows) {
+            const root = { name: this.selectedSourceAttribute, children: [] };
+            const nodesMap = {};
+		
+            dataFlows.forEach(flow => {
+            console.log(flow);
+                let currentNode = root;
+                flow.forEach(comp => {
+                        const newNode = { name: comp, children: [] };
+                        nodesMap[comp] = newNode;
+                        currentNode.children.push(newNode);
+                    
+                    currentNode = nodesMap[comp];
+                });
+            });
 
+            return root;
+        },
+        renderTree(data) {
+    const svg = d3.select(this.$refs.treeContainer);
+    svg.selectAll("*").remove();
 
-        createHierarchy(sortedComponents) {
-            if (sortedComponents.length === 0) return null;
+    const treeLayout = d3.tree().size([this.height - this.margin.top - this.margin.bottom, this.width - this.margin.right - this.margin.left]);
+    const root = d3.hierarchy(data);
+    treeLayout(root);
 
-            const createNode = (components, start, end) => {
-                if (start > end) return null;
+    const nodeSize = this.calculateNodeSize(root.descendants().length);
 
-                const mid = Math.floor((start + end) / 2);
-                const node = { name: components[mid].name, children: [] };
+    const link = svg.selectAll(".link")
+        .data(root.links())
+        .enter().append("path")
+        .attr("class", "link")
+        .attr("d", d3.linkHorizontal()
+            .x(d => d.y)
+            .y(d => d.x)
+        )
+        .attr("fill", "none")
+        .attr("stroke", "#ccc")
+        .attr("stroke-width", 2)
+        .on("mouseover", this.highlightPath)
+        .on("mouseout", this.resetPathHighlight);
 
-                const leftChild = createNode(components, start, mid - 1);
-                const rightChild = createNode(components, mid + 1, end);
+    const node = svg.selectAll(".node")
+        .data(root.descendants())
+        .enter().append("g")
+        .attr("class", "node")
+        .attr("transform", d => `translate(${d.y},${d.x})`);
 
-                if (leftChild) node.children.push(leftChild);
-                if (rightChild) node.children.push(rightChild);
+    node.append("circle")
+        .attr("r", nodeSize)
+        .attr("fill", "#3182bd"); // Set a single color for all nodes
 
-                return node;
-            };
-
-            const root = createNode(sortedComponents, 0, sortedComponents.length - 1);
-            return d3.hierarchy(root);
+    node.append("text")
+        .attr("dy", "-2em")
+        .attr("x", d => d.children ? -12 : 12)
+        .style("text-anchor", d => d.children ? "end" : "start")
+        .text(d => d.data.name);
+},
+        calculateNodeSize(numNodes) {
+            const baseSize = 10;
+            const maxSize = 30;
+            const minSize = 5;
+            const size = baseSize + (maxSize - baseSize) / Math.sqrt(numNodes);
+            return Math.max(minSize, Math.min(maxSize, size));
+        },
+        highlightPath(event, d) {
+            d3.select(event.currentTarget)
+                .attr("stroke", "orange")
+                .attr("stroke-width", 4);
+        },
+        resetPathHighlight(event, d) {
+            d3.select(event.currentTarget)
+                .attr("stroke", "#ccc")
+                .attr("stroke-width", 2);
         }
-        ,
-        updateSvg() {
-            const svg = d3.select(this.$refs.treeSvg);
-
-            svg.selectAll("*").remove();
-
-           
-            const nodeRadius = Math.min(this.width, this.height) * 0.05; 
-            const fontSize = Math.min(this.width, this.height) * 0.020; 
-            const g = svg.append("g")
-                .attr("transform", `translate(${this.width / 2},${this.margin.top})`);
-
-            const nodes = g.selectAll(".node")
-                .data(this.nodes)
-                .enter()
-                .append("g")
-                .attr("class", "node")
-                .attr("transform", (d) => `translate(${d.x - this.width / 2},${d.y})`);
-
-            nodes.append("circle")
-                .attr("r", nodeRadius)
-                .attr("fill", "#3182bd");
-
-            nodes.append("text")
-                .attr("dy", 3)
-                .attr("x", (d) => (d.children ? -nodeRadius : nodeRadius))
-                .style("text-anchor", (d) => (d.children ? "end" : "start"))
-                .style("font-size", `${fontSize}px`)
-                .text((d) => d.name);
-
-            const { width, height } = this;
-            svg.attr("viewBox", `-50 0 ${width} ${height}`);
-        }
-
-
-
-
-    },
+    }
 };
 </script>
+
 
 <style scoped>
 .d3-tree-container {
